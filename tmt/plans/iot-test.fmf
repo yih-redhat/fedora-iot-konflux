@@ -1,0 +1,18 @@
+summary: IOT test plan
+discover:
+  how: fmf
+  test: iot-test
+execute:
+  how: tmt
+provision:
+  hardware:
+    virtualization:
+      is-supported: true
+    cpu:
+      processors: ">= 4"
+    memory: ">= 8 GB"
+
+/iot-x86-commit:
+  summary: Test iot commit
+  environment+:
+    TEST_CASE: iot-commit
