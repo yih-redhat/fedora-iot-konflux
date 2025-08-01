@@ -54,21 +54,26 @@ spec:
           echo "Error: multiple images: ${IMAGES} in this application with component name: ${COMPONENT}"
           exit 1
         fi
-        echo $IMAGE
+        echo "IMAGE:$IMAGE"
 
-        IMAGE_NAME=$(echo "${IMAGE##*/}" | cut -d @ -f 1)
-        IMAGE_TAG=$(echo "${IMAGE##*/}" | cut -d : -f 2)
-        echo "IMAGE_NAME:$IMAGE_NAME"
-        echo "IMAGE_TAG:$IMAGE_TAG"
+        IMAGE_URL="quay.io/bootc-devel/fedora-bootc-rawhide-iot:latest"
+        BIB_URL="quay.io/centos-bootc/bootc-image-builder:latest"
+        QUAY_USERNAME=$(cat /etc/secrets/QUAY_USERNAME)
+        QUAY_PASSWORD=$(cat /etc/secrets/QUAY_PASSWORD)
+        TESTING_FARM_API_TOKEN=$(cat /etc/secrets/TESTING_FARM_API_TOKEN)
+        export TESTING_FARM_API_TOKEN
+        TESTING_FARM_API_URL="https://api.dev.testing-farm.io/v0.1"
 
-        skopeo inspect docker://"$IMAGE" > skopeo_inspect.json
-        cat skopeo_inspect.json
-        NAME=$(cat skopeo_inspect.json | jq -r ".Name")
-        echo "NAME:$NAME"
-        
-        if [[ "$NAME" =~ "$IMAGE_NAME" ]]; then
-          exit 0
-        else
-          exit 1
-        fi
+        testing-farm request \
+        -e IMAGE_URL="$IMAGE_URL" \
+        -e BIB_URL="$BIB_URL" \
+        -e QUAY_USERNAME="$QUAY_USERNAME" \
+        -e QUAY_PASSWORD="$QUAY_PASSWORD" \
+        --plan fedora-iot-fdo \
+        --git-url  ${GIT_URL} \
+        --git-ref  ${GIT_REF} \
+        --compose Fedora-Rawhide | tee tf_stdout.txt
+
+        exit 0
       timeout: "2h"
+
