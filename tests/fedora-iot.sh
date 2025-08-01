@@ -18,10 +18,10 @@ SSH_KEY=key/ostree_key
 SSH_KEY_PUB=$(cat "${SSH_KEY}".pub)
 EDGE_USER_PASSWORD=foobar
 
-#IMAGE_URL="quay.io/bootc-devel/fedora-bootc-rawhide-iot:latest"
-IMAGE_URL="registry.stage.redhat.io/rhel10/rhel-bootc:10.0"
-#BIB_URL="quay.io/centos-bootc/bootc-image-builder:latest"
-BIB_URL="registry.stage.redhat.io/rhel10/bootc-image-builder:10.0"
+IMAGE_URL="quay.io/bootc-devel/fedora-bootc-rawhide-iot:latest"
+BIB_URL="quay.io/centos-bootc/bootc-image-builder:latest"
+# IMAGE_URL="registry.stage.redhat.io/rhel10/rhel-bootc:10.0"
+# BIB_URL="registry.stage.redhat.io/rhel10/bootc-image-builder:10.0"
 
 # Colorful output.
 function greenprint {
@@ -76,12 +76,10 @@ sudo dnf install -y \
 # Login to Stage registry
 podman login quay.io -u ${QUAY_USERNAME} -p ${QUAY_PASSWORD}
 sudo podman login -u "${STAGE_REDHAT_IO_USERNAME}" -p "${STAGE_REDHAT_IO_TOKEN}" registry.stage.redhat.io
-copy files/rhel.repo .
 # Prepare Containerfile
 tee Containerfile > /dev/null << STOPHERE
 FROM ${IMAGE_URL}
 RUN echo 'root' | passwd --stdin root
-COPY rhel.repo /etc/yum.repos.d/
 RUN dnf install -y \
     fdo-init \
     fdo-client \
@@ -93,9 +91,9 @@ RUN dnf install -y \
 RUN systemctl enable fdo-client-linuxapp.service
 STOPHERE
 
-podman build  --retry=5 --retry-delay=10s -t quay.io/${QUAY_USERNAME}/fedora-iot-bootc:${TEST_UUID} -f Containerfile .
+podman build  --retry=5 --retry-delay=10s -t quay.io/${QUAY_USERNAME}/fedora-iot:${TEST_UUID} -f Containerfile .
 greenprint "Pushing bootc container to quay.io"
-podman push quay.io/${QUAY_USERNAME}/fedora-iot-bootc:${TEST_UUID}
+podman push quay.io/${QUAY_USERNAME}/fedora-iot:${TEST_UUID}
 
 # Create config.toml with kickstart information
 tee config.toml > /dev/null << STOPHERE
@@ -146,33 +144,6 @@ echo "(Don't worry -- that out-of-space error was expected.)"
 """
 STOPHERE
 
-# greenprint "Using BIB to convert container to qcow2"
-# tee config.json > /dev/null << EOF
-# {
-#   "blueprint": {
-#     "customizations": {
-#       "user": [
-#         {
-#           "name": "${SSH_USER}",
-#           "password": "${EDGE_USER_PASSWORD}",
-#           "key": "${SSH_KEY_PUB}",
-#           "groups": [
-#             "wheel"
-#           ]
-#         }
-#       ],
-#       "fdo": [
-#         {
-#           "manufacturing_server_url": "http://192.168.100.1:8080",
-#           "diun_pub_key_insecure": "true"
-#         }
-#       ]
-#     }
-#   }
-# }
-# EOF
-
-
 sudo rm -fr output && mkdir -p output
 sudo podman run \
     --rm \
@@ -188,7 +159,7 @@ sudo podman run \
     --config /config.toml \
     --rootfs xfs \
     --use-librepo=true \
-    quay.io/${QUAY_USERNAME}/greenboot-bootc:${TEST_UUID}
+    quay.io/${QUAY_USERNAME}/fedora-iot:${TEST_UUID}
 
 sudo qemu-img create -f qcow2 /var/lib/libvirt/images/fdo-iso.qcow2 20G
 sudo cp output/bootiso/install.iso /var/lib/libvirt/images/
@@ -199,7 +170,7 @@ sudo virt-install  --name="${VM_NAME}" \
                 --vcpus 2 \
                 --network network=integration,mac=34:49:22:B0:83:30 \
                 --os-type linux \
-                --os-variant rhel10-unknown \
+                --os-variant fedora-unknown \
                 --cdrom /var/lib/libvirt/images/install.iso \
                 --boot uefi \
                 --tpm backend.type=emulator,backend.version=2.0,model=tpm-crb \
@@ -211,44 +182,6 @@ sudo virt-install  --name="${VM_NAME}" \
 # Start VM.
 greenprint "Start VM"
 sudo virsh start "${VM_NAME}"
-
-# podman run \
-#     --rm \
-#     -it \
-#     --privileged \
-#     --pull=newer \
-#     --security-opt label=type:unconfined_t \
-#     -v $(pwd)/config.json:/config.json \
-#     -v $(pwd)/output:/output \
-#     -v /var/lib/containers/storage:/var/lib/containers/storage \
-#     ${BIB_URL} \
-#     --type qcow2 \
-#     --config /config.json \
-#     --rootfs xfs \
-#     --use-librepo=true \
-#     quay.io/${QUAY_USERNAME}/greenboot-bootc:${TEST_UUID}
-
-# greenprint "Installing vm with bootc qcow2/iso image"
-# mv $(pwd)/output/qcow2/disk.qcow2 /var/lib/libvirt/images/${TEST_UUID}-disk.qcow2
-# LIBVIRT_IMAGE_PATH_UEFI=/var/lib/libvirt/images/${TEST_UUID}-disk.qcow2
-# sudo restorecon -Rv /var/lib/libvirt/images/
-
-# sudo virt-install  --name="${TEST_UUID}-uefi"\
-#                    --disk path="${LIBVIRT_IMAGE_PATH_UEFI}",format=qcow2 \
-#                    --ram 3072 \
-#                    --vcpus 2 \
-#                    --network network=integration,mac=34:49:22:B0:83:30 \
-#                    --os-type linux \
-#                    --os-variant fedora-unknown \
-#                    --boot uefi \
-#                    --nographics \
-#                    --noautoconsole \
-#                    --wait=-1 \
-#                    --import \
-#                    --noreboot
-
-# greenprint "Starting UEFI VM"
-# sudo virsh start "${TEST_UUID}-uefi"
 
 # Check for ssh ready to go.
 greenprint "🛃 Checking for SSH is ready to go"
