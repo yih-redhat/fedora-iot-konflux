@@ -42,7 +42,7 @@ sudo localectl set-locale LANG=en_US.UTF-8
 
 # Install required packages
 greenprint "Install required packages"
-sudo dnf install -y --nogpgcheck httpd podman skopeo wget firewalld lorax xorriso curl jq expect qemu-img qemu-kvm libvirt-client libvirt-daemon-kvm libvirt-daemon virt-install rpmdevtools createrepo_c
+sudo dnf install -y --nogpgcheck httpd podman firewalld lorax xorriso expect qemu-img qemu-kvm libvirt-client libvirt-daemon-kvm libvirt-daemon virt-install
 
 # Customize repository
 sudo mkdir -p /etc/osbuild-composer/repositories
@@ -148,10 +148,6 @@ sudo cp files/owner-onboarding-server.yml /etc/fdo/owner-onboarding-server.conf.
 sudo cp files/rendezvous-server.yml /etc/fdo/rendezvous-server.conf.d/
 sudo cp files/serviceinfo-api-server.yml /etc/fdo/serviceinfo-api-server.conf.d/
 
-# Install yq to modify service api server config yaml file
-sudo pip3 install yq
-# Prepare service api server config file
-sudo /usr/local/bin/yq -iy '.service_info.diskencryption_clevis |= [{disk_label: "/dev/vda3", reencrypt: true, binding: {pin: "tpm2", config: "{}"}}]' /etc/fdo/serviceinfo-api-server.conf.d/serviceinfo-api-server.yml
 # Start FDO services
 sudo systemctl start \
     fdo-owner-onboarding-server.service \

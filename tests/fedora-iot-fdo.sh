@@ -1,13 +1,13 @@
 #!/bin/bash
 set -euox pipefail
 
+# Setup network, install required packages, start fdo servers
 ./setup.sh
 
 # Local variables
 TEST_UUID=qcow2-$((1 + RANDOM % 1000000))
 VM_NAME="fedora-iot-${TEST_UUID}"
 GUEST_ADDRESS=192.168.100.50
-SSH_USER="admin"
 
 # Set up temporary files.
 TEMPDIR=$(mktemp -d)
@@ -16,12 +16,8 @@ TEMPDIR=$(mktemp -d)
 SSH_OPTIONS=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5)
 SSH_KEY=key/ostree_key
 SSH_KEY_PUB=$(cat "${SSH_KEY}".pub)
-EDGE_USER_PASSWORD=foobar
-
-IMAGE_URL="quay.io/bootc-devel/fedora-bootc-rawhide-iot:latest"
-BIB_URL="quay.io/centos-bootc/bootc-image-builder:latest"
-# IMAGE_URL="registry.stage.redhat.io/rhel10/rhel-bootc:10.0"
-# BIB_URL="registry.stage.redhat.io/rhel10/bootc-image-builder:10.0"
+SSH_USER=admin
+SSH_USER_PASSWORD=foobar
 
 # Colorful output.
 function greenprint {
@@ -47,53 +43,18 @@ check_result () {
     fi
 }
 
-sudo dnf install -y \
-    cargo \
-    openssl \
-    openssl-devel \
-    git \
-    make \
-    systemd \
-    krb5-devel \
-    python3-docutils \
-    gpgme-devel \
-    libassuan-devel \
-    systemd-rpm-macros \
-    rpmdevtools \
-    golang \
-    go-rpm-macros \
-    python3-devel \
-    selinux-policy-devel \
-    device-mapper-devel \
-    podman \
-    qemu-img \
-    qemu-kvm \
-    libvirt-client \
-    libvirt-daemon-kvm \
-    libvirt-daemon \
-    virt-install
-
-# Login to Stage registry
-podman login quay.io -u ${QUAY_USERNAME} -p ${QUAY_PASSWORD}
-sudo podman login -u "${STAGE_REDHAT_IO_USERNAME}" -p "${STAGE_REDHAT_IO_TOKEN}" registry.stage.redhat.io
 # Prepare Containerfile
 tee Containerfile > /dev/null << STOPHERE
 FROM ${IMAGE_URL}
 RUN echo 'root' | passwd --stdin root
 RUN dnf install -y \
     fdo-init \
-    fdo-client \
-    clevis \
-    clevis-dracut \
-    clevis-luks \
-    clevis-pin-tpm2 \
-    clevis-systemd
+    fdo-client
 RUN systemctl enable fdo-client-linuxapp.service
 STOPHERE
 
-podman build  --retry=5 --retry-delay=10s -t quay.io/${QUAY_USERNAME}/fedora-iot:${TEST_UUID} -f Containerfile .
-greenprint "Pushing bootc container to quay.io"
-podman push quay.io/${QUAY_USERNAME}/fedora-iot:${TEST_UUID}
+# Login to Stage registry
+podman build  --retry=5 --retry-delay=10s -t localhost/fedora-iot:${TEST_UUID} -f Containerfile .
 
 # Create config.toml with kickstart information
 tee config.toml > /dev/null << STOPHERE
@@ -159,7 +120,7 @@ sudo podman run \
     --config /config.toml \
     --rootfs xfs \
     --use-librepo=true \
-    quay.io/${QUAY_USERNAME}/fedora-iot:${TEST_UUID}
+    localhost/fedora-iot:${TEST_UUID}
 
 sudo qemu-img create -f qcow2 /var/lib/libvirt/images/fdo-iso.qcow2 20G
 sudo cp output/bootiso/install.iso /var/lib/libvirt/images/
@@ -208,11 +169,11 @@ ansible_private_key_file=${SSH_KEY}
 ansible_ssh_common_args="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 ansible_become=yes
 ansible_become_method=sudo
-ansible_become_pass=${EDGE_USER_PASSWORD}
+ansible_become_pass=${SSH_USER_PASSWORD}
 EOF
 
 # Test IoT/Edge OS
-podman run --network=host --annotation run.oci.keep_original_groups=1 -v "$(pwd)":/work:z -v "${TEMPDIR}":/tmp:z --rm quay.io/rhel-edge/ansible-runner:latest ansible-playbook -v -i /tmp/inventory -e fdo_credential="true" check.yaml || RESULTS=0
+podman run --network=host --annotation run.oci.keep_original_groups=1 -v "$(pwd)":/work:z -v "${TEMPDIR}":/tmp:z --rm quay.io/rhel-edge/ansible-runner:latest ansible-playbook -v -i /tmp/inventory check.yaml || RESULTS=0
 
 # Check test result
 check_result

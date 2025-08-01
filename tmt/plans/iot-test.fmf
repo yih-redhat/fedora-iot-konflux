@@ -12,7 +12,7 @@ provision:
       processors: ">= 4"
     memory: ">= 8 GB"
 
-/iot-x86-commit:
-  summary: Test iot commit
+/fedora-iot-fdo:
+  summary: Test fedora-iot image with fdo enabled
   environment+:
-    TEST_CASE: iot-commit
+    TEST_CASE: fedora-iot-fdo
